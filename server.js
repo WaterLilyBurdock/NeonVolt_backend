@@ -206,6 +206,14 @@ function serveStatic(req, res, pathname) {
   });
 }
 
+/* ─── IP клиента (для merchant_param.ip) ─────────────────────────────── */
+function clientIpFrom(req) {
+  const xff = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  let ip = xff || req.socket.remoteAddress || '';
+  if (ip.startsWith('::ffff:')) ip = ip.slice(7);
+  return /^\d{1,3}(\.\d{1,3}){3}$/.test(ip) ? ip : '';
+}
+
 /* ─── Сервер ─────────────────────────────────────────────────────────── */
 function handler(req, res) {
   const parsed = new URL(req.url, 'http://localhost');
@@ -221,7 +229,13 @@ function handler(req, res) {
     return res.end();
   }
 
-  if (pathname.startsWith('/api/billing')) return handleBilling(res, params);
+  if (pathname.startsWith('/api/billing')) {
+    console.log('[billing] incoming ' + req.method + ' ' + req.url);
+    return handleBilling(res, params);
+  }
+  if (pathname === '/api/client-ip') {
+    return json(res, 200, { status: 'ok', ip: clientIpFrom(req) });
+  }
   if (pathname === '/api/entitlements') return handleEntitlements(res, params);
   if (pathname === '/api/score') return handleScore(req, res, params);
   if (pathname.startsWith('/api/')) return json(res, 404, { status: 'error', errmsg: 'Unknown API' });
