@@ -1,0 +1,13 @@
+{
+  "name": "neonvolt-vkplay-api",
+  "version": "1.0.0",
+  "private": true,
+  "description": "VK Play billing callback and entitlements API for NeonVolt",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
