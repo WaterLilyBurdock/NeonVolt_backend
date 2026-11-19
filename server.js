@@ -85,13 +85,54 @@ function safeEqual(a, b) {
   return crypto.timingSafeEqual(ba, bb);
 }
 
+/* ─── Чтение тела запроса (на случай POST вместо GET) ─────────────────── */
+function readBody(req) {
+  return new Promise(function (resolve) {
+    const chunks = [];
+    let size = 0;
+    req.on('data', function (chunk) {
+      size += chunk.length;
+      if (size <= 1024 * 1024) chunks.push(chunk);
+    });
+    req.on('end', function () {
+      if (!chunks.length) return resolve({});
+      const raw = Buffer.concat(chunks).toString('utf8');
+      const type = String(req.headers['content-type'] || '').toLowerCase();
+      try {
+        if (type.indexOf('application/json') !== -1) {
+          const obj = JSON.parse(raw);
+          return resolve(obj && typeof obj === 'object' ? obj : {});
+        }
+        const out = {};
+        new URLSearchParams(raw).forEach(function (v, k) { out[k] = v; });
+        resolve(out);
+      } catch (e) {
+        resolve({});
+      }
+    });
+    req.on('error', function () { resolve({}); });
+  });
+}
+
+function getParam(params, extra, name) {
+  const fromQuery = params.get(name);
+  if (fromQuery != null && fromQuery !== '') return fromQuery;
+  if (extra && extra[name] != null && extra[name] !== '') return String(extra[name]);
+  return '';
+}
+
+function paramAsString(value) {
+  if (value && typeof value === 'object') return JSON.stringify(value);
+  return value ? String(value) : '';
+}
+
 /* ─── Callback оплаты ────────────────────────────────────────────────── */
-function handleBilling(res, params) {
-  const uid = params.get('uid') || '';
-  const sum = params.get('sum') || '';
-  const tid = params.get('tid') || '';
-  const merchantParam = params.get('merchant_param') || '';
-  const sign = params.get('sign') || '';
+function handleBilling(res, params, extra) {
+  const uid = getParam(params, extra, 'uid');
+  const sum = getParam(params, extra, 'sum');
+  const tid = getParam(params, extra, 'tid');
+  const merchantParam = paramAsString(getParam(params, extra, 'merchant_param'));
+  const sign = getParam(params, extra, 'sign');
 
   if (!uid || !sum || !tid || !merchantParam || !sign) {
     return json(res, 400, { status: 'error', errcode: 2000, errmsg: 'Missing parameters' });
@@ -230,8 +271,11 @@ function handler(req, res) {
   }
 
   if (pathname.startsWith('/api/billing')) {
-    console.log('[billing] incoming ' + req.method + ' ' + req.url);
-    return handleBilling(res, params);
+    return readBody(req).then(function (extra) {
+      console.log('[billing] incoming ' + req.method + ' ' + req.url +
+                  ' body=' + Object.keys(extra).join(','));
+      return handleBilling(res, params, extra);
+    });
   }
   if (pathname === '/api/client-ip') {
     return json(res, 200, { status: 'ok', ip: clientIpFrom(req) });
